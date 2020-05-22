@@ -198,10 +198,16 @@ def main(xargs):
   logger.log('||||||| {:10s} ||||||| Config={:}'.format(xargs.dataset, config))
 
   search_space = get_search_spaces('cell', xargs.search_space_name)
-  model_config = dict2config({'name': 'ENAS', 'C': xargs.channel, 'N': xargs.num_cells,
-                              'max_nodes': xargs.max_nodes, 'num_classes': class_num,
-                              'space'    : search_space,
-                              'affine'   : False, 'track_running_stats': bool(xargs.track_running_stats)}, None)
+
+  if xargs.model_config is None:
+    model_config = dict2config({'name': 'ENAS', 'C': xargs.channel, 'N': xargs.num_cells,
+                                'max_nodes': xargs.max_nodes, 'num_classes': class_num,
+                                'space'    : search_space,
+                                'affine'   : False, 'track_running_stats': bool(xargs.track_running_stats)}, None)
+  else:
+    model_config = load_config(xargs.model_config, {'num_classes': class_num, 'space'    : search_space,
+                                                    'affine'     : False, 'track_running_stats': bool(xargs.track_running_stats)}, None)
+
   shared_cnn = get_cell_based_tiny_net(model_config)
   controller = shared_cnn.create_controller()
   
@@ -328,6 +334,7 @@ if __name__ == '__main__':
   parser.add_argument('--channel',            type=int,   help='The number of channels.')
   parser.add_argument('--num_cells',          type=int,   help='The number of cells in one stage.')
   parser.add_argument('--config_path',        type=str,   help='The config file to train ENAS.')
+  parser.add_argument('--model_config',       type=str,   help='The path of the model configuration. When this arg is set, it will cover max_nodes / channels / num_cells.')
   parser.add_argument('--controller_train_steps',    type=int,     help='.')
   parser.add_argument('--controller_num_aggregate',  type=int,     help='.')
   parser.add_argument('--controller_entropy_weight', type=float,   help='The weight for the entropy of the controller.')

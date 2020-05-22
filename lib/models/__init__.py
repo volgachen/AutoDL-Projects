@@ -7,13 +7,15 @@ import torch
 
 __all__ = ['change_key', 'get_cell_based_tiny_net', 'get_search_spaces', 'get_cifar_models', 'get_imagenet_models', \
            'obtain_model', 'obtain_search_model', 'load_net_from_checkpoint', \
-           'CellStructure', 'CellArchitectures'
+           'CellStructure', 'CellArchitectures', \
+           'OPS', 'SearchSpaceNames', 'cell_operations'
            ]
 
 # useful modules
 from config_utils import dict2config
 from .SharedUtils import change_key
 from .cell_searchs import CellStructure, CellArchitectures
+from .cell_operations import OPS, SearchSpaceNames
 
 
 # Cell-based NAS Models
@@ -30,7 +32,7 @@ def get_cell_based_tiny_net(config):
   elif super_type == 'nasnet-super':
     from .cell_searchs import nasnet_super_nets as nas_super_nets
     return nas_super_nets[config.name](config.C, config.N, config.steps, config.multiplier, \
-                    config.stem_multiplier, config.num_classes, config.space, config.affine, config.track_running_stats)
+                    config.stem_multiplier, config.num_classes, config.space, config.affine, config.track_running_stats, config.latency_file)
   elif config.name == 'infer.tiny':
     from .cell_infers import TinyNetwork
     if hasattr(config, 'genotype'):

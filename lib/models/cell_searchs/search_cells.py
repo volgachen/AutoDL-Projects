@@ -137,11 +137,17 @@ class MixedOp(nn.Module):
   def forward_darts(self, x, weights):
     return sum(w * op(x) for w, op in zip(weights, self._ops))
 
+  def forward_enas(self, x, index):
+    return self._ops[index](x)
+
 
 # Learning Transferable Architectures for Scalable Image Recognition, CVPR 2018
 class NASNetSearchCell(nn.Module):
+  #zychen
+  latency_dict = None
+  channel_map = {16:36, 32:72, 64: 144}
 
-  def __init__(self, space, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev, affine, track_running_stats):
+  def __init__(self, space, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev, affine, track_running_stats, latency_file = None):
     super(NASNetSearchCell, self).__init__()
     self.reduction = reduction
     self.op_names  = deepcopy(space)
@@ -162,6 +168,15 @@ class NASNetSearchCell(nn.Module):
     self.edge_keys  = sorted(list(self.edges.keys()))
     self.edge2index = {key:i for i, key in enumerate(self.edge_keys)}
     self.num_edges  = len(self.edges)
+    #zychen
+    self.space = space
+    self.reduction = reduction
+    self.C = C
+    if len(latency_file)>0 and NASNetSearchCell.latency_dict is None:
+      latency_record = torch.load(latency_file)
+      NASNetSearchCell.latency_dict = latency_record['latency']
+      for k,v in NASNetSearchCell.latency_dict.items():
+        NASNetSearchCell.latency_dict[k] = v.cuda() / latency_record['counts']
 
   def forward_gdas(self, s0, s1, weightss, indexs):
     s0 = self.preprocess0(s0)
@@ -195,3 +210,33 @@ class NASNetSearchCell(nn.Module):
       states.append( sum(clist) )
 
     return torch.cat(states[-self._multiplier:], dim=1)
+
+  def forward_enas(self, s0, s1, arch):
+    s0 = self.preprocess0(s0)
+    s1 = self.preprocess1(s1)
+
+    states = [s0, s1]
+    for i in range(self._steps):
+      idx1, op1, idx2, op2 = arch[4*i: 4*i+4]
+      edge1 = self.edges['{:}<-{:}'.format(i, idx1)]
+      edge2 = self.edges['{:}<-{:}'.format(i, idx2)]
+      states.append(edge1.forward_enas(states[idx1], op1) + edge2.forward_enas(states[idx2], op2))
+
+    return torch.cat(states[-self._multiplier:], dim=1)
+
+  def latency_gdas(self, weights, size):
+    latency = torch.zeros(1).cuda()
+    weights = weights.cuda()
+    for i in range(self._steps):
+      for j in range(2+i):
+        stride = 2 if self.reduction and j < 2 else 1
+        node_str = '{:}<-{:}'.format(i, j)  # indicate the edge from node-(j) to node-(i+2)
+        idx = self.edge2index[node_str]
+        key = '%d_%d_%d'%(self.C, size, stride)
+        latency += sum(weights[idx] * NASNetSearchCell.latency_dict[key])
+    return latency
+        #idx_op = index[idx]
+        #key = '%s_%d_%d_%d'%(self.space[idx_op], NASNetSearchCell.channel_map[self.C], size, stride)
+        #latency_loss += probs
+        #print(idx, NASNetSearchCell.latency_dict[key])
+        #self.edges[ node_str ] = op

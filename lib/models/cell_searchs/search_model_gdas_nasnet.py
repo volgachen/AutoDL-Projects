@@ -10,7 +10,7 @@ from .search_cells import NASNetSearchCell as SearchCell
 # The macro structure is based on NASNet
 class NASNetworkGDAS(nn.Module):
 
-  def __init__(self, C, N, steps, multiplier, stem_multiplier, num_classes, search_space, affine, track_running_stats):
+  def __init__(self, C, N, steps, multiplier, stem_multiplier, num_classes, search_space, affine, track_running_stats, latency_file = None):
     super(NASNetworkGDAS, self).__init__()
     self._C        = C
     self._layerN   = N
@@ -29,7 +29,7 @@ class NASNetworkGDAS(nn.Module):
 
     self.cells = nn.ModuleList()
     for index, (C_curr, reduction) in enumerate(zip(layer_channels, layer_reductions)):
-      cell = SearchCell(search_space, steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, affine, track_running_stats)
+      cell = SearchCell(search_space, steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, affine, track_running_stats, latency_file=latency_file)
       if num_edge is None: num_edge, edge2index = cell.num_edges, cell.edge2index
       else: assert num_edge == cell.num_edges and edge2index == cell.edge2index, 'invalid {:} vs. {:}.'.format(num_edge, cell.num_edges)
       self.cells.append( cell )
@@ -43,6 +43,8 @@ class NASNetworkGDAS(nn.Module):
     self.arch_normal_parameters = nn.Parameter( 1e-3*torch.randn(num_edge, len(search_space)) )
     self.arch_reduce_parameters = nn.Parameter( 1e-3*torch.randn(num_edge, len(search_space)) )
     self.tau        = 10
+    #zychen
+    self.use_latency = len(latency_file)>0
 
   def get_weights(self):
     xlist = list( self.stem.parameters() ) + list( self.cells.parameters() )
@@ -107,19 +109,22 @@ class NASNetworkGDAS(nn.Module):
         if (torch.isinf(gumbels).any()) or (torch.isinf(probs).any()) or (torch.isnan(probs).any()):
           continue
         else: break
-      return hardwts, index
+      return hardwts, index, probs
 
-    normal_hardwts, normal_index = get_gumbel_prob(self.arch_normal_parameters)
-    reduce_hardwts, reduce_index = get_gumbel_prob(self.arch_reduce_parameters)
+    normal_hardwts, normal_index, normal_probs = get_gumbel_prob(self.arch_normal_parameters)
+    reduce_hardwts, reduce_index, reduce_probs = get_gumbel_prob(self.arch_reduce_parameters)
 
     s0 = s1 = self.stem(inputs)
+    latency_costs = torch.zeros(1).cuda()
     for i, cell in enumerate(self.cells):
-      if cell.reduction: hardwts, index = reduce_hardwts, reduce_index
-      else             : hardwts, index = normal_hardwts, normal_index
+      if cell.reduction: hardwts, index, probs, size = reduce_hardwts, reduce_index, normal_probs, s1.shape[-1]/2
+      else             : hardwts, index, probs, size = normal_hardwts, normal_index, reduce_probs, s1.shape[-1]
       s0, s1 = s1, cell.forward_gdas(s0, s1, hardwts, index)
+      if self.use_latency:
+        latency_costs = latency_costs + cell.latency_gdas(probs, size)
     out = self.lastact(s1)
     out = self.global_pooling( out )
     out = out.view(out.size(0), -1)
     logits = self.classifier(out)
 
-    return out, logits
+    return out, logits, latency_costs

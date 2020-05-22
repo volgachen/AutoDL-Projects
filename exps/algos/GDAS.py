@@ -18,10 +18,11 @@ from models       import get_cell_based_tiny_net, get_search_spaces
 from nas_201_api  import NASBench201API as API
 
 
-def search_func(xloader, network, criterion, scheduler, w_optimizer, a_optimizer, epoch_str, print_freq, logger):
+def search_func(xloader, network, criterion, scheduler, w_optimizer, a_optimizer, epoch_str, print_freq, logger, latency_weight = 0.0):
   data_time, batch_time = AverageMeter(), AverageMeter()
   base_losses, base_top1, base_top5 = AverageMeter(), AverageMeter(), AverageMeter()
   arch_losses, arch_top1, arch_top5 = AverageMeter(), AverageMeter(), AverageMeter()
+  all_losses, latency_record = AverageMeter(), AverageMeter()
   network.train()
   end = time.time()
   for step, (base_inputs, base_targets, arch_inputs, arch_targets) in enumerate(xloader):
@@ -33,7 +34,7 @@ def search_func(xloader, network, criterion, scheduler, w_optimizer, a_optimizer
     
     # update the weights
     w_optimizer.zero_grad()
-    _, logits = network(base_inputs)
+    _, logits, latency = network(base_inputs)
     base_loss = criterion(logits, base_targets)
     base_loss.backward()
     torch.nn.utils.clip_grad_norm_(network.parameters(), 5)
@@ -46,12 +47,15 @@ def search_func(xloader, network, criterion, scheduler, w_optimizer, a_optimizer
 
     # update the architecture-weight
     a_optimizer.zero_grad()
-    _, logits = network(arch_inputs)
+    _, logits, latency = network(arch_inputs)
     arch_loss = criterion(logits, arch_targets)
-    arch_loss.backward()
+    all_loss = arch_loss + latency_weight * latency
+    all_loss.backward()
     a_optimizer.step()
     # record
     arch_prec1, arch_prec5 = obtain_accuracy(logits.data, arch_targets.data, topk=(1, 5))
+    all_losses.update (all_loss.item(),   1)
+    latency_record.update(latency.item(), 1)
     arch_losses.update(arch_loss.item(),  arch_inputs.size(0))
     arch_top1.update  (arch_prec1.item(), arch_inputs.size(0))
     arch_top5.update  (arch_prec5.item(), arch_inputs.size(0))
@@ -64,9 +68,10 @@ def search_func(xloader, network, criterion, scheduler, w_optimizer, a_optimizer
       Sstr = '*SEARCH* ' + time_string() + ' [{:}][{:03d}/{:03d}]'.format(epoch_str, step, len(xloader))
       Tstr = 'Time {batch_time.val:.2f} ({batch_time.avg:.2f}) Data {data_time.val:.2f} ({data_time.avg:.2f})'.format(batch_time=batch_time, data_time=data_time)
       Wstr = 'Base [Loss {loss.val:.3f} ({loss.avg:.3f})  Prec@1 {top1.val:.2f} ({top1.avg:.2f}) Prec@5 {top5.val:.2f} ({top5.avg:.2f})]'.format(loss=base_losses, top1=base_top1, top5=base_top5)
-      Astr = 'Arch [Loss {loss.val:.3f} ({loss.avg:.3f})  Prec@1 {top1.val:.2f} ({top1.avg:.2f}) Prec@5 {top5.val:.2f} ({top5.avg:.2f})]'.format(loss=arch_losses, top1=arch_top1, top5=arch_top5)
-      logger.log(Sstr + ' ' + Tstr + ' ' + Wstr + ' ' + Astr)
-  return base_losses.avg, base_top1.avg, base_top5.avg, arch_losses.avg, arch_top1.avg, arch_top5.avg
+      Astr = 'Arch [Loss {loss.val:.3f} ({loss.avg:.3f})  Prec@1 {top1.val:.2f} ({top1.avg:.2f}) Prec@5 {top5.val:.2f} ({top5.avg:.2f})]'.format(loss=all_losses, top1=arch_top1, top5=arch_top5)
+      Lstr = 'Loss [Arch {arch.val:.3f} ({arch.avg:.3f}), Latency {late.val:.3f} ({late.avg:.3f})]'.format(arch=arch_losses, late=latency_record)
+      logger.log(Sstr + ' ' + Tstr + ' ' + Wstr + ' ' + Astr + ' ' + Lstr)
+  return base_losses.avg, base_top1.avg, base_top5.avg, all_losses.avg, arch_top1.avg, arch_top5.avg
 
 
 def main(xargs):
@@ -142,7 +147,7 @@ def main(xargs):
     logger.log('\n[Search the {:}-th epoch] {:}, tau={:}, LR={:}'.format(epoch_str, need_time, search_model.get_tau(), min(w_scheduler.get_lr())))
 
     search_w_loss, search_w_top1, search_w_top5, valid_a_loss , valid_a_top1 , valid_a_top5 \
-              = search_func(search_loader, network, criterion, w_scheduler, w_optimizer, a_optimizer, epoch_str, xargs.print_freq, logger)
+              = search_func(search_loader, network, criterion, w_scheduler, w_optimizer, a_optimizer, epoch_str, xargs.print_freq, logger, latency_weight=xargs.latency_weight)
     search_time.update(time.time() - start_time)
     logger.log('[{:}] searching : loss={:.2f}, accuracy@1={:.2f}%, accuracy@5={:.2f}%, time-cost={:.1f} s'.format(epoch_str, search_w_loss, search_w_top1, search_w_top5, search_time.sum))
     logger.log('[{:}] evaluate  : loss={:.2f}, accuracy@1={:.2f}%, accuracy@5={:.2f}%'.format(epoch_str, valid_a_loss , valid_a_top1 , valid_a_top5 ))
@@ -206,6 +211,7 @@ if __name__ == '__main__':
   parser.add_argument('--arch_weight_decay',  type=float, default=1e-3, help='weight decay for arch encoding')
   parser.add_argument('--tau_min',            type=float,               help='The minimum tau for Gumbel')
   parser.add_argument('--tau_max',            type=float,               help='The maximum tau for Gumbel')
+  parser.add_argument('--latency_weight',     type=float, default=0.0,  help='The maximum tau for Gumbel')
   # log
   parser.add_argument('--workers',            type=int,   default=2,    help='number of data loading workers (default: 2)')
   parser.add_argument('--save_dir',           type=str,   help='Folder to save checkpoints and log.')

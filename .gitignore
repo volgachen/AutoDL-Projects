@@ -123,3 +123,7 @@ scripts-search/l2s-algos
 TEMP-L.sh
 
 .nfs00*
+
+# zychen
+2020*.sh
+lib/models/*.pth

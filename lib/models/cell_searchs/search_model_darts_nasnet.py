@@ -12,7 +12,7 @@ from .search_cells import NASNetSearchCell as SearchCell
 class NASNetworkDARTS(nn.Module):
 
   def __init__(self, C: int, N: int, steps: int, multiplier: int, stem_multiplier: int,
-               num_classes: int, search_space: List[Text], affine: bool, track_running_stats: bool):
+               num_classes: int, search_space: List[Text], affine: bool, track_running_stats: bool, latency_file: str):
     super(NASNetworkDARTS, self).__init__()
     self._C        = C
     self._layerN   = N
@@ -31,7 +31,7 @@ class NASNetworkDARTS(nn.Module):
 
     self.cells = nn.ModuleList()
     for index, (C_curr, reduction) in enumerate(zip(layer_channels, layer_reductions)):
-      cell = SearchCell(search_space, steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, affine, track_running_stats)
+      cell = SearchCell(search_space, steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, affine, track_running_stats, latency_file=latency_file)
       if num_edge is None: num_edge, edge2index = cell.num_edges, cell.edge2index
       else: assert num_edge == cell.num_edges and edge2index == cell.edge2index, 'invalid {:} vs. {:}.'.format(num_edge, cell.num_edges)
       self.cells.append( cell )
