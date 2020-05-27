@@ -73,7 +73,7 @@ class NASNetworkENAS(nn.Module):
     for i, cell in enumerate(self.cells):
       if cell.reduction: arc = self.sampled_arch[0]
       else             : arc = self.sampled_arch[1]
-      s0, s1 = s1, cell.forward_enas(s0, s1, arc)
+      s0, s1 = s1, cell.forward_sample(s0, s1, arc)
     out = self.lastact(s1)
     out = self.global_pooling( out )
     out = out.view(out.size(0), -1)

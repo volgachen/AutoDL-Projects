@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from copy import deepcopy
 from .cells import NASNetInferCell as InferCell, AuxiliaryHeadCIFAR
+from ..cell_operations import DARTS_SPACE
 
 
 # The macro structure is based on NASNet
@@ -21,6 +22,23 @@ class NASNetonCIFAR(nn.Module):
     # config for each layer
     layer_channels   = [C    ] * N + [C*2 ] + [C*2  ] * (N-1) + [C*4 ] + [C*4  ] * (N-1)
     layer_reductions = [False] * N + [True] + [False] * (N-1) + [True] + [False] * (N-1)
+
+    # zychen :: change genotype structure
+    if isinstance(genotype, torch.Tensor) or isinstance(genotype, list):
+      print('Original genotype:', genotype)
+      num_nodes = len(genotype) // 8
+      arch_normal, arch_reduce = genotype[ : 4*num_nodes], genotype[ 4*num_nodes :]
+      geno_normal, geno_reduce = [], []
+      for i in range(num_nodes):
+        x_id, x_op, y_id, y_op = arch_normal[4*i: 4*i+4]
+        geno_normal.append(((DARTS_SPACE[x_op], x_id), (DARTS_SPACE[y_op], y_id)))
+        x_id, x_op, y_id, y_op = arch_reduce[4*i: 4*i+4]
+        geno_reduce.append(((DARTS_SPACE[x_op], x_id), (DARTS_SPACE[y_op], y_id)))
+      genotype = {'normal': geno_normal,
+                  'normal_concat': list(range(2, 2+num_nodes)),
+                  'reduce': geno_reduce,
+                  'reduce_concat': list(range(2, 2+num_nodes))}
+      print('Changed genotype:', genotype)
 
     C_prev_prev, C_prev, C_curr, reduction_prev = C*stem_multiplier, C*stem_multiplier, C, False
     self.auxiliary_index = None

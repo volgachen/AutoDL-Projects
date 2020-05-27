@@ -137,7 +137,7 @@ class MixedOp(nn.Module):
   def forward_darts(self, x, weights):
     return sum(w * op(x) for w, op in zip(weights, self._ops))
 
-  def forward_enas(self, x, index):
+  def forward_sample(self, x, index):
     return self._ops[index](x)
 
 
@@ -211,7 +211,7 @@ class NASNetSearchCell(nn.Module):
 
     return torch.cat(states[-self._multiplier:], dim=1)
 
-  def forward_enas(self, s0, s1, arch):
+  def forward_sample(self, s0, s1, arch):
     s0 = self.preprocess0(s0)
     s1 = self.preprocess1(s1)
 
@@ -220,7 +220,7 @@ class NASNetSearchCell(nn.Module):
       idx1, op1, idx2, op2 = arch[4*i: 4*i+4]
       edge1 = self.edges['{:}<-{:}'.format(i, idx1)]
       edge2 = self.edges['{:}<-{:}'.format(i, idx2)]
-      states.append(edge1.forward_enas(states[idx1], op1) + edge2.forward_enas(states[idx2], op2))
+      states.append(edge1.forward_sample(states[idx1], op1) + edge2.forward_sample(states[idx2], op2))
 
     return torch.cat(states[-self._multiplier:], dim=1)
 

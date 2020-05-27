@@ -98,7 +98,7 @@ def get_cifar_models(config, extra_path=None):
         if not osp.isfile(extra_path): raise ValueError('invalid extra_path : {:}'.format(extra_path))
         xdata = torch.load(extra_path)
         current_epoch = xdata['epoch']
-        genotype = xdata['genotypes'][current_epoch-1]
+        genotype =  xdata['genotypes'][-1 if current_epoch == 'finished' else current_epoch-1]
       C = config.C if hasattr(config, 'C') else config.ichannel
       N = config.N if hasattr(config, 'N') else config.layers
       return NASNetonCIFAR(C, N, config.stem_multi, config.class_num, genotype, config.auxiliary)

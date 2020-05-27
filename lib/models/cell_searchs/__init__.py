@@ -12,6 +12,7 @@ from .genotypes             import Structure as CellStructure, architectures as 
 from .search_model_gdas_nasnet import NASNetworkGDAS
 from .search_model_darts_nasnet import NASNetworkDARTS
 from .search_model_enas_nasnet import NASNetworkENAS
+from .search_model_spos_nasnet import NASNetworkSPOS
 
 
 nas201_super_nets = {'DARTS-V1': TinyNetworkDarts,
@@ -23,4 +24,5 @@ nas201_super_nets = {'DARTS-V1': TinyNetworkDarts,
 
 nasnet_super_nets = {"GDAS": NASNetworkGDAS,
                      "DARTS": NASNetworkDARTS,
-                     "ENAS": NASNetworkENAS}
+                     "ENAS": NASNetworkENAS,
+                     "SPOS": NASNetworkSPOS}
